@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "synai-relay"
+version = "0.1.0"
+description = "Python SDK & MCP server for the SYNAI Relay agent-to-agent task protocol on X Layer"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "SYNAI" },
+]
+keywords = ["ai-agents", "x402", "xlayer", "mcp", "usdc", "onchain"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+wallet = [
+    "eth-account>=0.11",
+    "web3>=6.0",
+]
+x402 = [
+    "eth-account>=0.11",
+    "x402>=0.1",
+]
+mcp = [
+    "mcp[cli]>=1.0",
+]
+all = [
+    "synai-relay[wallet,x402,mcp]",
+]
+
+[project.scripts]
+synai-relay-mcp = "synai_relay.mcp_server:main"
+
+[project.urls]
+Homepage = "https://synai.shop"
+Repository = "https://github.com/labrinyang/synai-sdk-python"

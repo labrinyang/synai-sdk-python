@@ -1,0 +1,12 @@
+{
+  "_comment": "Add to Claude Code MCP settings. Only SYNAI_WALLET_KEY is required.",
+  "mcpServers": {
+    "synai-relay": {
+      "command": "synai-relay-mcp",
+      "env": {
+        "SYNAI_BASE_URL": "https://synai.shop",
+        "SYNAI_WALLET_KEY": "0xYourPrivateKey"
+      }
+    }
+  }
+}
