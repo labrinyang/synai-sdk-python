@@ -71,6 +71,12 @@ class SynaiClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _patch(self, path: str, json: dict = None) -> dict:
+        resp = self._session.patch(self._url(path), json=json,
+                                   headers=self._wallet_auth_header("PATCH", path))
+        resp.raise_for_status()
+        return resp.json()
+
     def _delete(self, path: str) -> bool:
         resp = self._session.delete(
             self._url(path),
@@ -124,11 +130,7 @@ class SynaiClient:
         agent_id = agent_id or self.agent_id
         if not agent_id:
             raise ValueError("agent_id required (no wallet configured)")
-        resp = self._session.patch(
-            self._url(f"/agents/{agent_id}"), json=kwargs,
-            headers=self._wallet_auth_header("PATCH", f"/agents/{agent_id}"))
-        resp.raise_for_status()
-        return resp.json()
+        return self._patch(f"/agents/{agent_id}", kwargs)
 
     def rotate_api_key(self, agent_id: str = None) -> dict:
         """Rotate API key. Returns new raw key. Old key is invalidated."""
@@ -144,7 +146,8 @@ class SynaiClient:
         """Create a job. Auto-settles via x402 if wallet_key is configured."""
         body = {"title": title, "description": description,
                 "price": price, **kwargs}
-        resp = self._session.post(self._url("/jobs"), json=body)
+        resp = self._session.post(self._url("/jobs"), json=body,
+                                  headers=self._wallet_auth_header("POST", "/jobs"))
         if resp.status_code == 402 and self._wallet_key:
             return self._x402_settle(resp, body)
         resp.raise_for_status()
@@ -162,12 +165,7 @@ class SynaiClient:
         Open jobs: title, description, rubric, expiry, max_submissions, max_retries.
         Funded jobs: expiry (extend only).
         """
-        path = f"/jobs/{task_id}"
-        resp = self._session.patch(
-            self._url(path), json=fields,
-            headers=self._wallet_auth_header("PATCH", path))
-        resp.raise_for_status()
-        return resp.json()
+        return self._patch(f"/jobs/{task_id}", fields)
 
     def cancel_job(self, task_id: str) -> dict:
         """Cancel a job. Funded jobs auto-refund if no active judging."""
@@ -225,7 +223,13 @@ class SynaiClient:
         return self._post(f"/jobs/{task_id}/submit", {"content": content})
 
     def get_submission(self, submission_id: str) -> dict:
-        return self._get(f"/submissions/{submission_id}")
+        path = f"/submissions/{submission_id}"
+        resp = self._session.get(self._url(path),
+            headers=self._wallet_auth_header("GET", path))
+        if resp.status_code == 402 and self._wallet_key:
+            return self._x402_settle_get(resp, path)
+        resp.raise_for_status()
+        return resp.json()
 
     def submit_and_wait(self, task_id: str, content,
                         timeout: int = 120) -> dict:
@@ -233,8 +237,10 @@ class SynaiClient:
         sub = self.submit(task_id, content)
         sub_id = sub["submission_id"]
         deadline = time.time() + timeout
+        interval = 3
         while time.time() < deadline:
-            time.sleep(5)
+            time.sleep(interval)
+            interval = min(interval + 2, 15)
             result = self.get_submission(sub_id)
             if result["status"] != "judging":
                 return result
@@ -272,6 +278,25 @@ class SynaiClient:
             account = Account.from_key(self._wallet_key)
         self._x402 = x402ClientSync()
         register_exact_evm_client(self._x402, EthAccountSigner(account))
+
+    def _x402_settle_get(self, resp_402, path: str) -> dict:
+        """Settle x402 payment and retry a GET request."""
+        self._init_x402()
+        from x402.http import (
+            decode_payment_required_header,
+            encode_payment_signature_header,
+            X_PAYMENT_HEADER,
+        )
+        payment_required = decode_payment_required_header(
+            resp_402.headers["PAYMENT-REQUIRED"])
+        payload = self._x402.create_payment_payload(payment_required)
+        header = encode_payment_signature_header(payload)
+        resp = self._session.get(
+            self._url(path),
+            headers={**self._wallet_auth_header("GET", path),
+                     X_PAYMENT_HEADER: header})
+        resp.raise_for_status()
+        return resp.json()
 
     def _x402_settle(self, resp_402, job_body: dict) -> dict:
         self._init_x402()
