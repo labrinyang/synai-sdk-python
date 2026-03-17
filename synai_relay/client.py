@@ -311,6 +311,7 @@ class SynaiClient:
         header = encode_payment_signature_header(payload)
         resp = self._session.post(
             self._url("/jobs"), json=job_body,
-            headers={X_PAYMENT_HEADER: header})
+            headers={**self._wallet_auth_header("POST", "/jobs"),
+                     X_PAYMENT_HEADER: header})
         resp.raise_for_status()
         return resp.json()
